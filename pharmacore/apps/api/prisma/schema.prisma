@@ -1,0 +1,395 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+model Tenant {
+  id             String    @id @default(uuid())
+  name           String    @db.VarChar(255)
+  slug           String    @unique @db.VarChar(100)
+  plan           String?   @default("starter") @db.VarChar(50)
+  status         String?   @default("trial") @db.VarChar(20)
+  trialEndsAt    DateTime? @map("trial_ends_at")
+  settings       Json?     
+  createdAt      DateTime? @default(now()) @map("created_at")
+  updatedAt      DateTime? @default(now()) @map("updated_at")
+
+  branches       Branch[]
+  users          User[]
+  roles          Role[]
+  medicines      Medicine[]
+  batches        MedicineBatch[]
+  stockMovements StockMovement[]
+  invoices       Invoice[]
+  payments       Payment[]
+  suppliers      Supplier[]
+  purchaseOrders PurchaseOrder[]
+  drugRegisters  ControlledDrugRegister[]
+  drugLicenses   DrugLicense[]
+  customers      Customer[]
+  tenantPlugins  TenantPlugin[]
+
+  @@map("tenants")
+}
+
+model Branch {
+  id             String    @id @default(uuid())
+  tenantId       String?   @map("tenant_id")
+  name           String    @db.VarChar(255)
+  code           String?   @db.VarChar(20)
+  address        String?   @db.Text
+  phone          String?   @db.VarChar(20)
+  drugLicense    String?   @map("drug_license") @db.VarChar(100)
+  licenseExpiry  DateTime? @map("license_expiry") @db.Date
+  isHeadOffice   Boolean?  @default(false) @map("is_head_office")
+  settings       Json?     
+  createdAt      DateTime? @default(now()) @map("created_at")
+
+  tenant         Tenant?   @relation(fields: [tenantId], references: [id])
+  userRoles      UserBranchRole[]
+  batches        MedicineBatch[]
+  stockMovements StockMovement[]
+  invoices       Invoice[]
+  purchaseOrders PurchaseOrder[]
+  drugRegisters  ControlledDrugRegister[]
+  drugLicenses   DrugLicense[]
+
+  @@map("branches")
+}
+
+model User {
+  id             String    @id @default(uuid())
+  tenantId       String?   @map("tenant_id")
+  email          String?   @db.VarChar(255)
+  phone          String?   @db.VarChar(20)
+  passwordHash   String?   @map("password_hash") @db.VarChar(255)
+  name           String    @db.VarChar(255)
+  status         String?   @default("active") @db.VarChar(20)
+  lastLoginAt    DateTime? @map("last_login_at")
+  createdAt      DateTime? @default(now()) @map("created_at")
+
+  tenant         Tenant?   @relation(fields: [tenantId], references: [id])
+  userRoles      UserBranchRole[]
+
+  @@unique([tenantId, email])
+  @@unique([tenantId, phone])
+  @@map("users")
+}
+
+model Role {
+  id             String    @id @default(uuid())
+  tenantId       String?   @map("tenant_id")
+  name           String    @db.VarChar(100)
+  slug           String    @db.VarChar(100)
+  permissions    Json?     
+  isSystem       Boolean?  @default(false) @map("is_system")
+  createdAt      DateTime? @default(now()) @map("created_at")
+
+  tenant         Tenant?   @relation(fields: [tenantId], references: [id])
+  userRoles      UserBranchRole[]
+
+  @@map("roles")
+}
+
+model UserBranchRole {
+  id             String    @id @default(uuid())
+  userId         String?   @map("user_id")
+  branchId       String?   @map("branch_id")
+  roleId         String?   @map("role_id")
+
+  user           User?     @relation(fields: [userId], references: [id])
+  branch         Branch?   @relation(fields: [branchId], references: [id])
+  role           Role?     @relation(fields: [roleId], references: [id])
+
+  @@unique([userId, branchId])
+  @@map("user_branch_roles")
+}
+
+model Medicine {
+  id             String    @id @default(uuid())
+  tenantId       String?   @map("tenant_id")
+  name           String    @db.VarChar(255)
+  genericName    String?   @map("generic_name") @db.VarChar(255)
+  brandName      String?   @map("brand_name") @db.VarChar(255)
+  manufacturer   String?   @db.VarChar(255)
+  category       String?   @db.VarChar(100)
+  form           String?   @db.VarChar(50)
+  strength       String?   @db.VarChar(50)
+  unit           String?   @db.VarChar(20)
+  packSize       Int?      @default(1) @map("pack_size")
+  barcode        String?   @db.VarChar(100)
+  sku            String?   @db.VarChar(100)
+  isGeneric      Boolean?  @default(false) @map("is_generic")
+  isScheduled    Boolean?  @default(false) @map("is_scheduled")
+  scheduleClass  String?   @map("schedule_class") @db.VarChar(10)
+  requiresRx     Boolean?  @default(false) @map("requires_rx")
+  mrp            Decimal?  @db.Decimal(10, 2)
+  reorderLevel   Int?      @default(10) @map("reorder_level")
+  reorderQty     Int?      @default(100) @map("reorder_qty")
+  isActive       Boolean?  @default(true) @map("is_active")
+  createdAt      DateTime? @default(now()) @map("created_at")
+
+  tenant         Tenant?   @relation(fields: [tenantId], references: [id])
+  batches        MedicineBatch[]
+  invoiceItems   InvoiceItem[]
+  drugRegisters  ControlledDrugRegister[]
+
+  @@unique([tenantId, barcode])
+  @@index([tenantId])
+  @@index([barcode])
+  @@map("medicines")
+}
+
+model MedicineBatch {
+  id             String    @id @default(uuid())
+  tenantId       String?   @map("tenant_id")
+  medicineId     String?   @map("medicine_id")
+  branchId       String?   @map("branch_id")
+  batchNumber    String    @map("batch_number") @db.VarChar(100)
+  mfgDate        DateTime? @map("mfg_date") @db.Date
+  expDate        DateTime  @map("exp_date") @db.Date
+  purchasePrice  Decimal?  @map("purchase_price") @db.Decimal(10, 2)
+  salePrice      Decimal?  @map("sale_price") @db.Decimal(10, 2)
+  mrp            Decimal?  @db.Decimal(10, 2)
+  qtyInStock     Int?      @default(0) @map("qty_in_stock")
+  qtySold        Int?      @default(0) @map("qty_sold")
+  qtyReturned    Int?      @default(0) @map("qty_returned")
+  status         String?   @default("active") @db.VarChar(20)
+  createdAt      DateTime? @default(now()) @map("created_at")
+
+  tenant         Tenant?   @relation(fields: [tenantId], references: [id])
+  medicine       Medicine? @relation(fields: [medicineId], references: [id])
+  branch         Branch?   @relation(fields: [branchId], references: [id])
+  stockMovements StockMovement[]
+  invoiceItems   InvoiceItem[]
+
+  @@unique([tenantId, medicineId, branchId, batchNumber])
+  @@map("medicine_batches")
+}
+
+model StockMovement {
+  id             String    @id @default(uuid())
+  tenantId       String?   @map("tenant_id")
+  batchId        String?   @map("batch_id")
+  branchId       String?   @map("branch_id")
+  type           String    @db.VarChar(30)
+  quantity       Int
+  referenceId    String?   @map("reference_id")
+  referenceType  String?   @map("reference_type") @db.VarChar(30)
+  notes          String?   @db.Text
+  createdBy      String?   @map("created_by")
+  createdAt      DateTime? @default(now()) @map("created_at")
+
+  tenant         Tenant?   @relation(fields: [tenantId], references: [id])
+  batch          MedicineBatch? @relation(fields: [batchId], references: [id])
+  branch         Branch?   @relation(fields: [branchId], references: [id])
+
+  @@map("stock_movements")
+}
+
+model Invoice {
+  id             String    @id @default(uuid())
+  tenantId       String?   @map("tenant_id")
+  branchId       String?   @map("branch_id")
+  invoiceNumber  String    @unique @map("invoice_number") @db.VarChar(50)
+  invoiceDate    DateTime? @default(now()) @map("invoice_date")
+  customerId     String?   @map("customer_id")
+  customerName   String?   @map("customer_name") @db.VarChar(255)
+  customerPhone  String?   @map("customer_phone") @db.VarChar(20)
+  prescriptionId String?   @map("prescription_id")
+  subtotal       Decimal?  @db.Decimal(12, 2)
+  discountAmount Decimal?  @default(0) @map("discount_amount") @db.Decimal(12, 2)
+  vatAmount      Decimal?  @default(0) @map("vat_amount") @db.Decimal(12, 2)
+  totalAmount    Decimal?  @map("total_amount") @db.Decimal(12, 2)
+  paidAmount     Decimal?  @default(0) @map("paid_amount") @db.Decimal(12, 2)
+  dueAmount      Decimal?  @default(0) @map("due_amount") @db.Decimal(12, 2)
+  status         String?   @default("paid") @db.VarChar(20)
+  notes          String?   @db.Text
+  createdBy      String?   @map("created_by")
+  createdAt      DateTime? @default(now()) @map("created_at")
+
+  tenant         Tenant?   @relation(fields: [tenantId], references: [id])
+  branch         Branch?   @relation(fields: [branchId], references: [id])
+  customer       Customer? @relation(fields: [customerId], references: [id])
+  items          InvoiceItem[]
+  payments       Payment[]
+
+  @@map("invoices")
+}
+
+model InvoiceItem {
+  id             String    @id @default(uuid())
+  invoiceId      String?   @map("invoice_id")
+  medicineId     String?   @map("medicine_id")
+  batchId        String?   @map("batch_id")
+  quantity       Int
+  unitPrice      Decimal?  @map("unit_price") @db.Decimal(10, 2)
+  discountPct    Decimal?  @default(0) @map("discount_pct") @db.Decimal(5, 2)
+  vatPct         Decimal?  @default(0) @map("vat_pct") @db.Decimal(5, 2)
+  lineTotal      Decimal?  @map("line_total") @db.Decimal(12, 2)
+
+  invoice        Invoice?  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  medicine       Medicine? @relation(fields: [medicineId], references: [id])
+  batch          MedicineBatch? @relation(fields: [batchId], references: [id])
+
+  @@map("invoice_items")
+}
+
+model Payment {
+  id             String    @id @default(uuid())
+  tenantId       String?   @map("tenant_id")
+  invoiceId      String?   @map("invoice_id")
+  amount         Decimal?  @db.Decimal(12, 2)
+  method         String?   @db.VarChar(30)
+  reference      String?   @db.VarChar(100)
+  status         String?   @default("completed") @db.VarChar(20)
+  paidAt         DateTime? @default(now()) @map("paid_at")
+  createdBy      String?   @map("created_by")
+
+  tenant         Tenant?   @relation(fields: [tenantId], references: [id])
+  invoice        Invoice?  @relation(fields: [invoiceId], references: [id])
+
+  @@map("payments")
+}
+
+model Supplier {
+  id             String    @id @default(uuid())
+  tenantId       String?   @map("tenant_id")
+  name           String    @db.VarChar(255)
+  company        String?   @db.VarChar(255)
+  phone          String?   @db.VarChar(20)
+  email          String?   @db.VarChar(255)
+  address        String?   @db.Text
+  drugLicense    String?   @map("drug_license") @db.VarChar(100)
+  creditLimit    Decimal?  @default(0) @map("credit_limit") @db.Decimal(12, 2)
+  creditDays     Int?      @default(30) @map("credit_days")
+  balance        Decimal?  @default(0) @db.Decimal(12, 2)
+  isActive       Boolean?  @default(true) @map("is_active")
+  createdAt      DateTime? @default(now()) @map("created_at")
+
+  tenant         Tenant?   @relation(fields: [tenantId], references: [id])
+  purchaseOrders PurchaseOrder[]
+
+  @@map("suppliers")
+}
+
+model PurchaseOrder {
+  id             String    @id @default(uuid())
+  tenantId       String?   @map("tenant_id")
+  branchId       String?   @map("branch_id")
+  poNumber       String?   @unique @map("po_number") @db.VarChar(50)
+  supplierId     String?   @map("supplier_id")
+  status         String?   @default("draft") @db.VarChar(20)
+  totalAmount    Decimal?  @map("total_amount") @db.Decimal(12, 2)
+  notes          String?   @db.Text
+  expectedDate   DateTime? @map("expected_date") @db.Date
+  createdBy      String?   @map("created_by")
+  createdAt      DateTime? @default(now()) @map("created_at")
+
+  tenant         Tenant?   @relation(fields: [tenantId], references: [id])
+  branch         Branch?   @relation(fields: [branchId], references: [id])
+  supplier       Supplier? @relation(fields: [supplierId], references: [id])
+
+  @@map("purchase_orders")
+}
+
+model ControlledDrugRegister {
+  id             String    @id @default(uuid())
+  tenantId       String?   @map("tenant_id")
+  branchId       String?   @map("branch_id")
+  medicineId     String?   @map("medicine_id")
+  date           DateTime  @db.Date
+  openingBalance Int?      @map("opening_balance")
+  qtyReceived    Int?      @default(0) @map("qty_received")
+  qtyDispensed   Int?      @default(0) @map("qty_dispensed")
+  closingBalance Int?      @map("closing_balance")
+  remarks        String?   @db.Text
+  verifiedBy     String?   @map("verified_by")
+  createdAt      DateTime? @default(now()) @map("created_at")
+
+  tenant         Tenant?   @relation(fields: [tenantId], references: [id])
+  branch         Branch?   @relation(fields: [branchId], references: [id])
+  medicine       Medicine? @relation(fields: [medicineId], references: [id])
+
+  @@unique([tenantId, branchId, medicineId, date])
+  @@map("controlled_drug_register")
+}
+
+model DrugLicense {
+  id             String    @id @default(uuid())
+  tenantId       String?   @map("tenant_id")
+  branchId       String?   @map("branch_id")
+  licenseType    String?   @map("license_type") @db.VarChar(50)
+  licenseNumber  String?   @map("license_number") @db.VarChar(100)
+  issuedBy       String?   @map("issued_by") @db.VarChar(100)
+  issueDate      DateTime? @map("issue_date") @db.Date
+  expiryDate     DateTime? @map("expiry_date") @db.Date
+  documentUrl    String?   @map("document_url") @db.VarChar(500)
+  status         String?   @default("active") @db.VarChar(20)
+  reminderSent   Boolean?  @default(false) @map("reminder_sent")
+  createdAt      DateTime? @default(now()) @map("created_at")
+
+  tenant         Tenant?   @relation(fields: [tenantId], references: [id])
+  branch         Branch?   @relation(fields: [branchId], references: [id])
+
+  @@map("drug_licenses")
+}
+
+model Customer {
+  id             String    @id @default(uuid())
+  tenantId       String?   @map("tenant_id")
+  name           String    @db.VarChar(255)
+  phone          String?   @db.VarChar(20)
+  email          String?   @db.VarChar(255)
+  address        String?   @db.Text
+  dateOfBirth    DateTime? @map("date_of_birth") @db.Date
+  gender         String?   @db.VarChar(10)
+  loyaltyPoints  Int?      @default(0) @map("loyalty_points")
+  totalSpent     Decimal?  @default(0) @map("total_spent") @db.Decimal(12, 2)
+  creditLimit    Decimal?  @default(0) @map("credit_limit") @db.Decimal(12, 2)
+  dueBalance     Decimal?  @default(0) @map("due_balance") @db.Decimal(12, 2)
+  notes          String?   @db.Text
+  createdAt      DateTime? @default(now()) @map("created_at")
+
+  tenant         Tenant?   @relation(fields: [tenantId], references: [id])
+  invoices       Invoice[]
+
+  @@unique([tenantId, phone])
+  @@map("customers")
+}
+
+model Plugin {
+  id             String    @id @default(uuid())
+  slug           String?   @unique @db.VarChar(100)
+  name           String?   @db.VarChar(255)
+  version        String?   @db.VarChar(20)
+  description    String?   @db.Text
+  author         String?   @db.VarChar(255)
+  entryPoint     String?   @map("entry_point") @db.VarChar(500)
+  hooks          Json?     
+  permissions    Json?     
+  isOfficial     Boolean?  @default(false) @map("is_official")
+  createdAt      DateTime? @default(now()) @map("created_at")
+
+  tenantPlugins  TenantPlugin[]
+
+  @@map("plugins")
+}
+
+model TenantPlugin {
+  id             String    @id @default(uuid())
+  tenantId       String?   @map("tenant_id")
+  pluginId       String?   @map("plugin_id")
+  status         String?   @default("active") @db.VarChar(20)
+  settings       Json?     
+  installedAt    DateTime? @default(now()) @map("installed_at")
+
+  tenant         Tenant?   @relation(fields: [tenantId], references: [id])
+  plugin         Plugin?   @relation(fields: [pluginId], references: [id])
+
+  @@unique([tenantId, pluginId])
+  @@map("tenant_plugins")
+}
